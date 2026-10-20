@@ -403,7 +403,7 @@ payload-per-run/
 
 - **保真度原则**：以输入 .config 为基线构建补丁内核。QEMU 硬件所需的驱动（virtio、console）以**最小增量**并入，增量 diff 记录入报告（config 改动透明化）；
 - 构建在容器内进行（工具链与目标内核的构建要求对齐），ccache 加速增量构建；
-- 调试变体（KASAN/KCSAN/lockdep）作为可选构建，用于复现加速和 race 类验证；
+- 调试变体（KASAN/KCSAN/lockdep/UBSAN，UBSAN 启用 signed-integer-overflow 检测）作为可选构建，用于复现加速、race 类验证和算术溢出类问题的确定性检测；
 - 产物：Image/bzImage + vmlinux（供符号与 drgn 使用），哈希入产物库。
 
 ### 8.4 回归测试分层
@@ -460,7 +460,7 @@ payload-per-run/
 ### 11.1 基准
 
 - **崩溃类**：KGYM 抽样 15–20 例（自带复现脚本和标准修复补丁，可作标准答案）；
-- **行为类**：自建调度基准 10 例起步——从上游 sched git log 的 `Fixes:` 标签中选取可复现的行为类修复（负载不均、带宽控制、延迟回归），以真实的修复 commit 为标准答案。目前没有同类基准，需要先建起来；
+- **行为类**：自建调度基准 10 例起步——从上游 sched git log 的 `Fixes:` 标签中选取可复现的行为类修复（负载不均、带宽控制、延迟回归），以真实的修复 commit 为标准答案。目前没有同类基准，需要先建起来。首批 case 卡片（M0 管线验证两例 + M1 分析型旗舰一例）见 `benchmarks/cases.md`，卡片格式即后续基准 case 的统一格式；
 - 基准集开放贡献：任何历史 bug 都可以按统一格式沉淀为新的基准 case。
 
 ### 11.2 指标
