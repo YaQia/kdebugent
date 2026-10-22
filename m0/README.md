@@ -38,14 +38,15 @@ oracle 求值器对两类 bug 各验证一种 type（console_panic / ftrace_asse
   原始复现器即 kmod——提交正文 trace 中的 `[proxy_migrate_repro]`）
 - `Fixes: b049b81bdff6`（可 bisect）；基线 = `fe3c73d7bc76^`
 
-## Case 1 阶段一步骤（待执行）
+## Case 1 阶段一步骤
 
-1. 基线构建：`/home/yaqia/linux` 检出 `fe3c73d7bc76^`，`make olddefconfig && make -j12`
-2. kmod 构建：在基线树中 `make M=m0/cases/case1-proxy-warn`
-3. initramfs：trigger.ko + 静态 init → cpio
-4. `QEMU_SMP=2` 跑 N=10 → R_base（oracle: present，必要时 `QEMU_APPEND_EXTRA="loglevel=8"` 确保模块 pr_info 可见）
-5. 应用 `fe3c73d7bc76` 重建 → M 次（oracle: absent）+ 阴性对照
-6. 回归冒烟：boot + 基本功能（tier0 的雏形）
+1. 基线构建：worktree `~/kdebugent-build/base` @ `fd73f4a66598`（= `fe3c73d7bc76^`），
+   config 增量见 `config-delta.diff`
+2. 基线 R_base：`./run-case1.sh ~/kdebugent-build/base out-rbase rbase 10`
+3. 补丁构建（增量）：worktree 内 `git checkout fe3c73d7bc76 && make -j"$(nproc)"`
+4. 补丁验证：`./run-case1.sh ~/kdebugent-build/base out-patched verify 3`
+5. 阴性对照（基线再跑，应全部命中）：`./run-case1.sh ~/kdebugent-build/base out-negctl rbase 3`
+6. 回归冒烟：tier0 雏形（boot + smoke trigger）
 
 ## 产物约定
 
