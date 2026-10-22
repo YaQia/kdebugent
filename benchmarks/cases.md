@@ -59,6 +59,8 @@ QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译
 
 **验证参数**：WARN_ON_ONCE（每次 boot 至多一次）→ 每次 QEMU 运行即一次独立判定；编排正确则确定性出现 → 预期 R_base ≈ 1.0，M=3。
 
+**验证结果（M0，2026-10-22）**：基线 10/10 命中（R_base = 1.0）；补丁 3/3 判定成立——WARN 消失而代理迁移依然发生（诊断行 `waiter task_cpu=1` 佐证，排除“场景失效”假阴性）；阴性对照 3/3 命中；回归冒烟通过。结论分级：**VERIFIED-DETERMINISTIC**。
+
 **风险**：签名与机制已于 2026-10-22 对照 `/home/yaqia/linux` 的提交正文核实（`WARNING: kernel/sched/core.c:3389 at set_task_cpu+0x1d3/0x280`）；剩余风险仅模块内等待时序（owner 持锁时长 vs waiter 阻塞窗口），在基线实测校准。
 
 **备选**：`f5741d2b3451`（wq_worker_tick 执行上下文，已进 7.2.x stable；缺点是触发依赖 tick 恰好落在 proxy 窗口内，确定性差一档）。

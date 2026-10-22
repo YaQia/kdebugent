@@ -43,15 +43,25 @@ oracle 求值器对两类 bug 各验证一种 type（console_panic / ftrace_asse
   ② owner 曾用 msleep 持锁——`find_proxy_task` 只在 owner runnable（on_rq）时才代理迁移，
   改为自旋持锁
 
-## Case 1 阶段一步骤
+## Case 1 阶段一：✅ 已完成（2026-10-22，VERIFIED-DETERMINISTIC）
+
+| 协议阶段                           | 运行 | 结果                                                                       |
+| ---------------------------------- | ---- | -------------------------------------------------------------------------- |
+| 基线 R_base（present）             | 10   | 10/10 命中 → R_base = 1.0                                                  |
+| 补丁验证（absent，`fe3c73d7bc76`） | 3    | 3/3 判定成立：WARN 消失而代理迁移仍发生（诊断行 `waiter task_cpu=1` 佐证） |
+| 阴性对照（present，基线镜像回跑）  | 3    | 3/3 命中，无环境漂移                                                       |
+| 回归冒烟（tier0 雏形）             | 1    | 补丁内核 boot + 触发器正常                                                 |
+
+复现步骤（运行产物在仓库根的 `out-*` 目录，已 gitignore）：
 
 1. 基线构建：worktree `~/kdebugent-build/base` @ `fd73f4a66598`（= `fe3c73d7bc76^`），
-   config 增量见 `config-delta.diff`
+   config 增量见 `config-delta.diff`（SCHED_PROXY_EXEC=y、关 sched_ext）
 2. 基线 R_base：`./run-case1.sh ~/kdebugent-build/base out-rbase rbase 10`
-3. 补丁构建（增量）：worktree 内 `git checkout fe3c73d7bc76 && make -j"$(nproc)"`
-4. 补丁验证：`./run-case1.sh ~/kdebugent-build/base out-patched verify 3`
-5. 阴性对照（基线再跑，应全部命中）：`./run-case1.sh ~/kdebugent-build/base out-negctl rbase 3`
-6. 回归冒烟：tier0 雏形（boot + smoke trigger）
+3. 备份基线镜像：`cp ~/kdebugent-build/base/arch/x86/boot/bzImage ~/kdebugent-build/bzImage-baseline`
+4. 补丁构建（增量）：worktree 内 `git checkout fe3c73d7bc76 && make -j"$(nproc)"`
+5. 补丁验证：`./run-case1.sh ~/kdebugent-build/base out-patched verify 3`
+6. 阴性对照：`QEMU_SMP=2 QEMU_MEM=512M QEMU_TIMEOUT=120 QEMU_APPEND_EXTRA="kdbg.kmod=/trigger.ko loglevel=8" m0/scripts/measure-rbase.sh ~/kdebugent-build/bzImage-baseline out-rbase/case1.cpio out-negctl "WARNING:.*set_task_cpu" present 3`
+7. 回归冒烟：`./m0/smoke/run-smoke.sh ~/kdebugent-build/base/arch/x86/boot/bzImage`
 
 ## 产物约定
 
