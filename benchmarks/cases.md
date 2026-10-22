@@ -32,7 +32,7 @@ CPU1: owner kthread 持有 mutex
 CPU0: waiter kthread migrate_disable() 后 mutex_lock() 阻塞
       → proxy 将其阻塞调度上下文移至 CPU1
 owner 解锁 → try_to_wake_up(waiter) → set_task_cpu → WARN
-QEMU: -smp 2；proxy execution 默认开启（static key，无 config 门槛）
+QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译期互斥且依赖 EXPERT——case 内核需关 sched_ext；开启后默认生效）
 ```
 
 **oracle 草图**：
@@ -51,7 +51,8 @@ QEMU: -smp 2；proxy execution 默认开启（static key，无 config 门槛）
   "env": {
     "arch": "x86_64",
     "smp": 2,
-    "memory_mb": 512
+    "memory_mb": 512,
+    "extra_config": "CONFIG_SCHED_PROXY_EXEC=y（关 CONFIG_SCHED_CLASS_EXT）"
   }
 }
 ```

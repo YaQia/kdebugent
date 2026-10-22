@@ -5,22 +5,26 @@
  * 对应修复: fe3c73d7bc76 ("sched/core: Avoid false migration warning for
  *           proxy donors")，基线 = 该提交的 parent（含 bug）。
  *
- * 场景（依提交正文，2026-10-22 已对照 /home/yaqia/linux 核实）：
- *   CPU1: owner kthread 持有 mutex
- *   CPU0: waiter kthread migrate_disable() 后 mutex_lock() 阻塞
- *         → proxy execution 把 waiter 阻塞的调度上下文移到 owner 的 CPU1
- *   owner 解锁 → try_to_wake_up(waiter) → set_task_cpu() 对
- *   migration-disabled 任务无条件 WARN（修复前）：
- *     WARNING: kernel/sched/core.c:3389 at set_task_cpu+0x1d3/0x280
- *   oracle（console_panic 型）pattern: "WARNING:.*set_task_cpu"
+ * 机制（2026-10-22 对照 /home/yaqia/linux 提交正文与内核源码核实）：
+ *   1. waiter 在 CPU0 上 migrate_disable() 后阻塞在内核 mutex 上；
+ *      proxy execution 下阻塞任务留在 rq 上（is_blocked）
+ *   2. CPU0 的 pick 路径进入 find_proxy_task()：owner 在 CPU1 上且
+ *      runnable（on_rq）→ proxy_migrate_task() 把 waiter 的调度上下文
+ *      迁到 CPU1 → set_task_cpu() 对 migration-disabled 任务 WARN
+ *   3. owner 解锁 → try_to_wake_up() 送 waiter 回原 CPU（修复后此路径
+ *      的 WARN 被 proxy_migrated 豁免）
  *
- * 环境: QEMU -smp 2；proxy execution 默认开启
- *   （DEFINE_STATIC_KEY_TRUE，无 config 门槛，boot 参数 sched_proxy_exec= 可控）。
+ * 两个必要条件（缺一不可，均经源码核实）：
+ *   - owner 持锁期间必须 runnable（自旋而非睡眠）：
+ *     find_proxy_task 对 !owner->on_rq 走 deactivate 分支，永不迁移
+ *   - CONFIG_SCHED_PROXY_EXEC=y：与 CONFIG_SCHED_CLASS_EXT 编译期互斥
+ *     （depends on !SCHED_CLASS_EXT && EXPERT），需关闭 sched_ext
  *
- * 编译: 在基线内核树（fe3c73d7bc76^ 检出）中 make M=<本目录>
- * 运行: 打入 initramfs，由 init 以 finit_module 加载（kdbg.kmod=/trigger.ko）
+ * WARN 签名（oracle pattern）："WARNING:.*set_task_cpu"
  *
- * 状态: 草稿——机制依提交正文编写，等待时长等时序参数需在基线上实测校准。
+ * 编译: 在基线内核树中 make M=<本目录> KBUILD_MODPOST_WARN=1
+ *       （精简构建无 Module.symvers，符号校验交给加载器）
+ * 运行: initramfs 内由 init 以 finit_module 加载（kdbg.kmod=/trigger.ko）
  */
 #include <linux/module.h>
 #include <linux/kthread.h>
@@ -28,17 +32,25 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/delay.h>
+#include <linux/atomic.h>
 
 static struct mutex lock;
 static struct task_struct *owner_task;
 static struct task_struct *waiter_task;
+static atomic_t waiter_blocked = ATOMIC_INIT(0);
 
 static int owner_fn(void *unused)
 {
 	mutex_lock(&lock);
-	pr_info("pmr: owner 持锁于 CPU%d\n", smp_processor_id());
-	msleep(500);
-	pr_info("pmr: owner 解锁 → 唤醒 waiter（预期在此触发 WARN）\n");
+	pr_info("pmr: owner 持锁于 CPU%d，自旋保持 runnable\n", smp_processor_id());
+	/* 持锁期间必须 runnable：find_proxy_task 只在 owner on_rq 时
+	 * 才把阻塞的 waiter 代理迁移过来（否则走 deactivate 分支） */
+	while (!atomic_read(&waiter_blocked))
+		cpu_relax();
+	/* 给 CPU0 的 tick 留出触发代理迁移的时间（HZ=1000，1ms 一拍） */
+	mdelay(200);
+	pr_info("pmr: waiter task_cpu=%d（1 = 已代理迁移至 owner 的 CPU）\n",
+		task_cpu(waiter_task));
 	mutex_unlock(&lock);
 	return 0;
 }
@@ -47,10 +59,12 @@ static int waiter_fn(void *unused)
 {
 	pr_info("pmr: waiter 于 CPU%d migrate_disable 后阻塞\n", smp_processor_id());
 	migrate_disable();
-	mutex_lock(&lock);	/* 阻塞；proxy 迁移调度上下文至 owner 的 CPU */
+	atomic_set(&waiter_blocked, 1);
+	mutex_lock(&lock);	/* 阻塞且留在 rq 上 → CPU0 代理迁移 → WARN */
 	mutex_unlock(&lock);
 	migrate_enable();
-	pr_info("pmr: waiter 醒来于 CPU%d\n", smp_processor_id());
+	pr_info("pmr: waiter 醒来于 CPU%d, task_cpu=%d\n",
+		smp_processor_id(), task_cpu(current));
 	return 0;
 }
 

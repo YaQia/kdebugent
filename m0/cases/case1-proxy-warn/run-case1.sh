@@ -21,9 +21,14 @@ case "$MODE" in
 esac
 
 # 1. 触发模块（临时目录构建，产物不进仓库）
+#    KBUILD_MODPOST_WARN=1：精简构建（bzImage+vmlinux+modules_prepare）不产出
+#    Module.symvers，modpost 无法在构建期校验符号。本树 MODVERSIONS 未开、
+#    触发器只用 EXPORT_SYMBOL_GPL 符号、且与目标内核同树构建——符号校验
+#    交给运行期的模块加载器。全量模块构建落地后可移除此开关。
 mkdir -p "$STAGE/kmod"
 cp "$HERE/proxy_migrate_repro.c" "$HERE/Makefile" "$STAGE/kmod/"
-make -C "$TREE" M="$STAGE/kmod" > "$OUT/kmod-build.log" 2>&1
+make -C "$TREE" M="$STAGE/kmod" KBUILD_MODPOST_WARN=1 > "$OUT/kmod-build.log" 2>&1 \
+    || { tail -20 "$OUT/kmod-build.log" >&2; exit 1; }
 echo "kmod: $(stat -c%s "$STAGE/kmod/proxy_migrate_repro.ko") 字节"
 
 # 2. initramfs：零依赖 init + trigger.ko
