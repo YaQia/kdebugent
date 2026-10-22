@@ -270,8 +270,6 @@ kAgent 已经实现了“补丁经过 crash 复现验证”的循环，与本项
 
 ![kdebugent 整体流程](assets/kdebugent-flow.svg)
 
-图源文件为 `assets/kdebugent-flow.drawio`（draw.io），修改流程图后重新导出 SVG 覆盖同名文件即可。
-
 编排器支持两种入口模式：
 
 - **常规模式**：从根因假设节点开始，复现程序由 agent 生成；
@@ -322,7 +320,7 @@ kAgent 已经实现了“补丁经过 crash 复现验证”的循环，与本项
 ```json
 {
   "trigger": {
-    "type": "c | ebpf | sh",
+    "type": "c | ebpf | kmod | sh",
     "source": "<代码或脚本>",
     "build": "static-musl",
     "run": { "iterations": 1000, "duration_s": 120, "parallel": 4 }

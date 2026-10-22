@@ -19,16 +19,20 @@
 | commit | `fe3c73d7bc76` sched/core: Avoid false migration warning for proxy donors                           |
 | 作者   | Andrea Righi（"Make proxy execution compatible with sched_ext" v9 系列 04/18），Peter Zijlstra 提交 |
 | 真实性 | CVE-2026-98418；被 AUTOSEL 回灌 6.18 stable——WARN 在现实中确实触发过                                |
+| Fixes  | `b049b81bdff6`（可 bisect）                                                                         |
 | 类别   | 崩溃类（WARN）→ `console_panic` 型 oracle                                                           |
 
-**机制**：proxy execution 下，持锁任务（donor）替代阻塞的高优任务（proxy）运行。donor 被迁移时（如 `sched_setaffinity`）走到迁移路径的合法性检查，该检查未考虑 donor 身份，触发假告警。
+**机制**：proxy execution 可以把阻塞任务的调度上下文移到锁持有者的 CPU——即使该任务处于 migration-disabled 状态（它并不在那里执行，原执行 CPU 仍记录在 wake_cpu）。`set_task_cpu()` 对 migration-disabled 任务无条件 WARN，于是解锁唤醒、调度上下文回家的路径出现误报。修复将“已被 proxy 迁移的阻塞 donor”排除出该告警。
 
-**触发构造**（纯 C）：
+**触发构造**（内核模块，2026-10-22 已核实）：
 
 ```text
-CPU0: 低优任务 H 持有 PI futex 并运行
-CPU1: SCHED_FIFO 高优任务 W 阻塞在该锁上 → W 成为 proxy，H 成为 donor
-主线程: sched_setaffinity(H, CPU1) → donor 迁移路径 → WARN
+migrate_disable() 是内核 API，用户态不可达 → 触发器为 kmod
+CPU1: owner kthread 持有 mutex
+CPU0: waiter kthread migrate_disable() 后 mutex_lock() 阻塞
+      → proxy 将其阻塞调度上下文移至 CPU1
+owner 解锁 → try_to_wake_up(waiter) → set_task_cpu → WARN
+QEMU: -smp 2；proxy execution 默认开启（static key，无 config 门槛）
 ```
 
 **oracle 草图**：
@@ -36,27 +40,25 @@ CPU1: SCHED_FIFO 高优任务 W 阻塞在该锁上 → W 成为 proxy，H 成为
 ```json
 {
   "trigger": {
-    "type": "c",
-    "build": "static-musl",
-    "run": { "iterations": 100 }
+    "type": "kmod",
+    "source": "m0/cases/case1-proxy-warn/proxy_migrate_repro.c"
   },
   "oracle": {
     "type": "console_panic",
-    "spec": { "pattern": "WARNING:.*（签名待核对，见风险）" },
+    "spec": { "pattern": "WARNING:.*set_task_cpu" },
     "fail_when": "present"
   },
   "env": {
     "arch": "x86_64",
     "smp": 2,
-    "memory_mb": 2048,
-    "extra_config": "CONFIG_PROXY_EXECUTION=y"
+    "memory_mb": 512
   }
 }
 ```
 
-**验证参数**：编排正确则 WARN 确定性出现 → 预期 R_base ≈ 1.0，M=3；若时序敏感退化为统计模式（R_base ≥ 0.3 时 M 按表取）。
+**验证参数**：WARN_ON_ONCE（每次 boot 至多一次）→ 每次 QEMU 运行即一次独立判定；编排正确则确定性出现 → 预期 R_base ≈ 1.0，M=3。
 
-**风险**：① WARN 的具体签名与触发点需先读 `fe3c73d7bc76` 全文在本地树核对（M0 首个工作项）；② proxy/donor 关系的编排依赖 PI futex 时序，预计要迭代几轮；③ `CONFIG_PROXY_EXECUTION` 的依赖（PREEMPT 等）需核对。
+**风险**：签名与机制已于 2026-10-22 对照 `/home/yaqia/linux` 的提交正文核实（`WARNING: kernel/sched/core.c:3389 at set_task_cpu+0x1d3/0x280`）；剩余风险仅模块内等待时序（owner 持锁时长 vs waiter 阻塞窗口），在基线实测校准。
 
 **备选**：`f5741d2b3451`（wq_worker_tick 执行上下文，已进 7.2.x stable；缺点是触发依赖 tick 恰好落在 proxy 窗口内，确定性差一档）。
 
