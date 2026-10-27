@@ -20,7 +20,7 @@
  *   - CONFIG_SCHED_PROXY_EXEC=y：与 CONFIG_SCHED_CLASS_EXT 编译期互斥
  *     （depends on !SCHED_CLASS_EXT && EXPERT），需关闭 sched_ext
  *
- * WARN 签名（oracle pattern）："WARNING:.*set_task_cpu"
+ * WARN 签名（checker pattern）："WARNING:.*set_task_cpu"
  *
  * 编译: 在基线内核树中 make M=<本目录> KBUILD_MODPOST_WARN=1
  *       （精简构建无 Module.symvers，符号校验交给加载器）

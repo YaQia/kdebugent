@@ -5,7 +5,7 @@
 - **元信息**：提交、作者、Fixes、真实性来源（CVE / LKML 报告 / 纯代码审查发现）；
 - **机制**：bug 因果链，一段话说清；
 - **触发构造**：复现程序的编排思路；
-- **oracle**：判定规格草图（schema 见技术方案 7.2）；
+- **checker**：判定规格草图（schema 见技术方案 7.2）；
 - **环境与验证参数**：config、拓扑、R_base 预期、协议参数、风险与备选。
 
 所有 case 的基线内核一律取修复 commit 的 parent（`git checkout <fix>^`）构建，验证时应用修复 commit 本身。首批三例：前两例用于 M0 管线验证，第三例是 M1 分析型旗舰（里程碑 M0–M3 的定义见 `docs/technical-design.md` 第 12 章）。
@@ -20,7 +20,7 @@
 | 作者   | Andrea Righi（"Make proxy execution compatible with sched_ext" v9 系列 04/18），Peter Zijlstra 提交 |
 | 真实性 | CVE-2026-98418；被 AUTOSEL 回灌 6.18 stable——WARN 在现实中确实触发过                                |
 | Fixes  | `b049b81bdff6`（可 bisect）                                                                         |
-| 类别   | 崩溃类（WARN）→ `console_panic` 型 oracle                                                           |
+| 类别   | 崩溃类（WARN）→ `console_panic` 型 checker                                                          |
 
 **机制**：proxy execution 可以把阻塞任务的调度上下文移到锁持有者的 CPU——即使该任务处于 migration-disabled 状态（它并不在那里执行，原执行 CPU 仍记录在 wake_cpu）。`set_task_cpu()` 对 migration-disabled 任务无条件 WARN，于是解锁唤醒、调度上下文回家的路径出现误报。修复将“已被 proxy 迁移的阻塞 donor”排除出该告警。
 
@@ -35,7 +35,7 @@ owner 解锁 → try_to_wake_up(waiter) → set_task_cpu → WARN
 QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译期互斥且依赖 EXPERT——case 内核需关 sched_ext；开启后默认生效）
 ```
 
-**oracle 草图**：
+**checker 草图**：
 
 ```json
 {
@@ -43,7 +43,7 @@ QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译
     "type": "kmod",
     "source": "m0/cases/case1-proxy-warn/proxy_migrate_repro.c"
   },
-  "oracle": {
+  "checker": {
     "type": "console_panic",
     "spec": { "pattern": "WARNING:.*set_task_cpu" },
     "fail_when": "present"
@@ -75,7 +75,7 @@ QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译
 | 作者   | Tim Chen；Reported-by: Zhan Xusheng（小米）；Suggested-by: Chen Yu                                |
 | Fixes  | `714059f79ff0`（可 bisect 的真回归）；Cc stable v7.2.x，进 7.3-rc5                                |
 | 报告   | lore.kernel.org/lkml/20260827135000.735138-1-zhanxusheng@xiaomi.com/（含现场负载描述，M0 前必读） |
-| 类别   | 行为类 → `ftrace_assert` 型 oracle                                                                |
+| 类别   | 行为类 → `ftrace_assert` 型 checker                                                               |
 
 **机制**：`nr_pref_llc_running` 按 queued 语义计数，`h_nr_runnable` 按 runnable 语义计数。DELAY_DEQUEUE 让睡眠任务滞留在前者中，等式 `nr_pref_llc_running == cfs.h_nr_runnable` 失配 → `alb_break_llc()` 误判 → 主动负载均衡把任务拉离其偏好 LLC。
 
@@ -89,11 +89,11 @@ CPU0-1（LLC0）: 共享 mm 的线程组，全体偏好 LLC0 的负载
 观测: 标记任务被迁往 LLC1
 ```
 
-**oracle 草图**：
+**checker 草图**：
 
 ```json
 {
-  "oracle": {
+  "checker": {
     "type": "ftrace_assert",
     "spec": {
       "event": "sched:sched_migrate_task",
@@ -120,19 +120,19 @@ CPU0-1（LLC0）: 共享 mm 的线程组，全体偏好 LLC0 的负载
 
 **风险**：① 负载形状（源 CPU 忙碌度、balance 间隔）需要调参，可能要几轮迭代；② `SCHED_DELAY_DEQUEUE` 的默认值需在树内 `kernel/sched/features.h` 核对。
 
-**备选**：`f8610c57f407`（h_curr in throttle_cfs_rq，Wanwu Li）——cgroup `cpu.max` + 忙循环是全清单里最简单的触发，oracle 读 `cpu.stat` 超配额（`metric_threshold` 型）；若本 case 负载形状调不出来则换它。
+**备选**：`f8610c57f407`（h_curr in throttle_cfs_rq，Wanwu Li）——cgroup `cpu.max` + 忙循环是全清单里最简单的触发，checker 读 `cpu.stat` 超配额（`metric_threshold` 型）；若本 case 负载形状调不出来则换它。
 
 ---
 
 ## Case 3：place_entity 溢出（行为类·分析型旗舰，M1）
 
-| 项     | 内容                                                                                                                      |
-| ------ | ------------------------------------------------------------------------------------------------------------------------- |
-| commit | `2f93bcb3f9aa` sched/fair: Avoid overflow in place_entity()                                                               |
-| 作者   | Hui Su；Peter Zijlstra 提交（2026-10-16）                                                                                 |
-| Fixes  | `4823725d9d1d`（可 bisect）                                                                                               |
-| 真实性 | **无 Reported-by——纯代码审查发现，现场从未被捕获**。这正是它的价值所在                                                    |
-| 类别   | 现场症状：**行为类**（无崩溃签名）；发现路径：**纯分析型**（vmcore 无事件证据）；验证 oracle：崩溃类形式（UBSAN console） |
+| 项     | 内容                                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------------------------- |
+| commit | `2f93bcb3f9aa` sched/fair: Avoid overflow in place_entity()                                                                |
+| 作者   | Hui Su；Peter Zijlstra 提交（2026-10-16）                                                                                  |
+| Fixes  | `4823725d9d1d`（可 bisect）                                                                                                |
+| 真实性 | **无 Reported-by——纯代码审查发现，现场从未被捕获**。这正是它的价值所在                                                     |
+| 类别   | 现场症状：**行为类**（无崩溃签名）；发现路径：**纯分析型**（vmcore 无事件证据）；验证 checker：崩溃类形式（UBSAN console） |
 
 **机制**：place_entity() 的 vlag 膨胀 `lag * (load + weight) / load` 中间乘积可先于商溢出 s64（4823725d9d1d 移除了 scale_load_down() 的算术余量）。修复为代数重写 `lag + lag * weight / load`，两行，教科书级靶向补丁。
 
@@ -152,7 +152,7 @@ lag 累积速率 = avg_vruntime 推进速率 = NICE_0_LOAD / sum_weight（恒定
 **双模式评估**：
 
 1. **分析模式**（考 RCA）：输入 = 行为症状描述（低份额 cgroup 任务长睡唤醒后异常受宠/异常冷冻）+ 一份“看起来正常”的 vmcore。指标：定位准确率（标准答案即 `2f93bcb3f9aa`）；
-2. **验证模式**（考修复闭环）：触发构造 + UBSAN oracle + 补丁验证。
+2. **验证模式**（考修复闭环）：触发构造 + UBSAN checker + 补丁验证。
 
 **触发构造**（确定性，无竞态）：
 
@@ -164,11 +164,11 @@ cgroup A: cpu.shares=2（组实体 scaled weight 2048）
 唤醒 sleeper → 组实体 place_entity：891289600 × 10361604098 > S64_MAX → 溢出
 ```
 
-**oracle 草图**：
+**checker 草图**：
 
 ```json
 {
-  "oracle": {
+  "checker": {
     "type": "console_panic",
     "spec": { "pattern": "UBSAN: signed integer overflow.*place_entity" },
     "fail_when": "present"
@@ -193,6 +193,6 @@ pattern 带函数名以过滤内核其他代码的 UBSAN 报告。
 
 ## 后续扩充
 
-- 每个 case 补一个 `case.yaml`（机器可读的触发/oracle/环境规格），供管线直接消费；
-- sched_ext 系列（本批清单中的 UAF/stall/hotplug hang）是 M1 之后 KASAN/看门狗 oracle 的素材，触发需附带 BPF scheduler 程序，门槛一级；
+- 每个 case 补一个 `case.yaml`（机器可读的触发/checker/环境规格），供管线直接消费；
+- sched_ext 系列（本批清单中的 UAF/stall/hotplug hang）是 M1 之后 KASAN/看门狗 checker 的素材，触发需附带 BPF scheduler 程序，门槛一级；
 - `118a2cf4ced6`（wakeup_preempt 类切换丢抢占，Paul McKenney 报告，2026-10-14 进 sched/urgent）：自建基准的下一个候选，原始触发绑定 rcutorture，需转化为纯用户态编排。

@@ -3,7 +3,7 @@
 目标（技术方案 §12）：不用 LLM 的手工管线，在 x86_64 上以纯脚本走通
 "复现 → R_base 测量 → 打补丁 → 验证 → 回归"全链路。
 验收：Case 1 与 Case 2 各产出完整运行产物与验证矩阵，
-oracle 求值器对两类 bug 各验证一种 type（console_panic / ftrace_assert）。
+checker 求值器对两类 bug 各验证一种 type（console_panic / ftrace_assert）。
 
 ## 环境勘察结论（2026-10-22，本机）
 
@@ -18,7 +18,7 @@ oracle 求值器对两类 bug 各验证一种 type（console_panic / ftrace_asse
 
 ## 目录
 
-- `scripts/`：`run-qemu.sh`（单次运行）· `oracle-console.sh`（console 求值器）· `measure-rbase.sh`（R_base 测量）
+- `scripts/`：`run-qemu.sh`（单次运行）· `checker-console.sh`（console 求值器）· `measure-rbase.sh`（R_base 测量）
 - `init/`：`init.c`——零依赖 initramfs init（挂载、解析 `kdbg.*` cmdline、finit_module 加载模块触发器、执行用户态触发器、关机）
 - `smoke/`：阶段零冒烟（宿主内核，验证管线机制本身）
 - `cases/case1-proxy-warn/`：Case 1 触发模块与事实记录
@@ -32,7 +32,7 @@ oracle 求值器对两类 bug 各验证一种 type（console_panic / ftrace_asse
 ## Case 1 已核实事实（读自 /home/yaqia/linux 的 fe3c73d7bc76，2026-10-22）
 
 - WARN 签名：`WARNING: kernel/sched/core.c:3389 at set_task_cpu+0x1d3/0x280`
-  → oracle pattern：`WARNING:.*set_task_cpu`
+  → checker pattern：`WARNING:.*set_task_cpu`
 - 场景：mutex owner 于 CPU1；waiter 于 CPU0 `migrate_disable()` 后阻塞；
   proxy 把阻塞调度上下文移至 CPU1；owner 解锁 → `try_to_wake_up` → WARN
 - 触发器形态：**内核模块**（`migrate_disable()` 是内核 API，用户态不可达；

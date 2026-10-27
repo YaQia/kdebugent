@@ -4,14 +4,14 @@
  *
  * 职责：挂载基础文件系统 → 打开控制台 → 解析 kdbg.* 内核参数 →
  *       （可选）finit_module 加载内核模块触发器 →（可选）执行用户态触发器 →
- *       报告结果 → 关机。所有输出进 console，供宿主侧 oracle 求值器匹配。
+ *       报告结果 → 关机。所有输出进 console，供宿主侧 checker 求值器匹配。
  *
  * cmdline 约定：
  *   kdbg.kmod=/trigger.ko    内核模块触发器（先加载，模块内自行编排并打印标记）
  *   kdbg.trig=/trigger       用户态触发器（后执行）
  *   kdbg.arg=...             传给触发器的单个参数（可选）
  *
- * console 输出约定（oracle 锚点）：
+ * console 输出约定（checker 锚点）：
  *   kdbg: init ready
  *   kdbg: kmod-rc=<n>        （加载了模块时）
  *   kdbg: trigger-rc=<n>     （执行了触发器时）

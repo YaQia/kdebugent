@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # M0 阶段零冒烟：宿主内核 + 零依赖 initramfs
 # 验证: initramfs 组装 → QEMU boot → console 捕获 → init 解析参数并执行触发器
-#       → oracle 求值 → 关机退出。不依赖任何 case，只验证管线机制本身。
+#       → checker 求值 → 关机退出。不依赖任何 case，只验证管线机制本身。
 # 用法: ./run-smoke.sh [内核镜像]（默认 /usr/lib/modules/$(uname -r)/vmlinuz）
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,4 +18,4 @@ QEMU_SMP=1 QEMU_MEM=256M QEMU_TIMEOUT=120 QEMU_APPEND_EXTRA="kdbg.trig=/trigger"
 echo "---- console 尾部 ----"
 tail -5 out/console.log
 echo "----------------------"
-../scripts/oracle-console.sh out/console.log "kdbg: smoke-done rc=0" present
+../scripts/checker-console.sh out/console.log "kdbg: smoke-done rc=0" present
