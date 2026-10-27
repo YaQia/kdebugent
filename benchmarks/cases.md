@@ -5,10 +5,10 @@
 - **元信息**：提交、作者、Fixes、真实性来源（CVE / LKML 报告 / 纯代码审查发现）；
 - **机制**：bug 因果链，一段话说清；
 - **触发构造**：复现程序的编排思路；
-- **checker**：判定规格草图（schema 见技术方案 7.2）；
+- **checker**：判定规格草图（schema 见技术方案 5.2）；
 - **环境与验证参数**：config、拓扑、R_base 预期、协议参数、风险与备选。
 
-所有 case 的基线内核一律取修复 commit 的 parent（`git checkout <fix>^`）构建，验证时应用修复 commit 本身。首批三例：前两例用于 M0 管线验证，第三例是 M1 分析型旗舰（里程碑 M0–M3 的定义见 `docs/technical-design.md` 第 12 章）。
+所有 case 的基线内核一律取修复 commit 的 parent（`git checkout <fix>^`）构建，验证时应用修复 commit 本身。首批三例：前两例用于 M0 管线验证，第三例是 M1 分析型旗舰（里程碑 M0–M3 的定义见 `docs/technical-design.md` 第 10 章）。
 
 ---
 

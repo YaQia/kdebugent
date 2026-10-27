@@ -1,4 +1,4 @@
-# M0 基线复现率测量：N 次运行 + checker 求值 → R_base（技术方案 4.3 阶段一）
+# M0 基线复现率测量：N 次运行 + checker 求值 → R_base（技术方案 2.3 阶段一）
 # 用法: measure-rbase.sh <kernel> <initrd> <outdir> <ERE> <present|absent> [N]
 # 产物: <outdir>/{runs/<i>/…, r_base.json}
 set -euo pipefail

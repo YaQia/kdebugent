@@ -37,7 +37,7 @@ cp "$STAGE/kmod/proxy_migrate_repro.ko" "$STAGE/trigger.ko"
 ( cd "$STAGE" && find . -print0 | cpio --null -o -H newc --quiet ) > "$OUT/case1.cpio"
 echo "initrd: $(wc -c < "$OUT/case1.cpio") 字节（kernel=$(grep -m1 'Linux version' "$OUT/kmod-build.log" 2>/dev/null || echo "$KERNEL")）"
 
-# 3. N 次运行 + checker 求值（同一谓词，两种 fail_when，见技术方案 7.4）
+# 3. N 次运行 + checker 求值（同一谓词，两种 fail_when，见技术方案 5.4）
 QEMU_SMP=2 QEMU_MEM=512M QEMU_TIMEOUT=120 \
 QEMU_APPEND_EXTRA="kdbg.kmod=/trigger.ko loglevel=8" \
   "$M0/scripts/measure-rbase.sh" "$KERNEL" "$OUT/case1.cpio" "$OUT" \
