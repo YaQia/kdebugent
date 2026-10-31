@@ -523,8 +523,7 @@ guest 的 `/init` 按固定顺序编排：
 ### 5.5 并发模型
 
 - 编排器为 Node.js 单进程（异步 I/O）；作业（build / qemu-run / regression）入 SQLite 作业表，worker 池消费，信号量限制并发 QEMU 实例数；
-- 作业带超时、重试、断点续跑（journal 和作业表双记录）；
-- M2 起支持多假设并行探索（并行派生多个验证作业）。
+- 作业带超时、重试、断点续跑（journal 和作业表双记录）。
 
 ---
 

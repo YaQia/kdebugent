@@ -5,14 +5,14 @@
 - **元信息**：提交、作者、Fixes、真实性来源（CVE / LKML 报告 / 纯代码审查发现）；
 - **机制**：bug 因果链，一段话说清；
 - **触发构造**：复现程序的编排思路；
-- **checker**：判定规格草图（schema 见技术方案 5.2）；
+- **checker**：判定规格草图（schema 见技术方案 4.2.4）；
 - **环境与验证参数**：config、拓扑、R_base 预期、协议参数、风险与备选。
 
-所有 case 的基线内核一律取修复 commit 的 parent（`git checkout <fix>^`）构建，验证时应用修复 commit 本身。首批三例：前两例用于 M0 管线验证，第三例是 M1 分析型旗舰（里程碑 M0–M3 的定义见 `docs/technical-design.md` 第 10 章）。
+所有 case 的基线内核一律取修复 commit 的 parent（`git checkout <fix>^`）构建，验证时应用修复 commit 本身。首批三例：前两例用于基础设施验证，第三例是 M1 单 case MVP 的旗舰案例（里程碑定义见 `AGENTS.md`）。
 
 ---
 
-## Case 1：proxy donors 的假迁移告警（崩溃类，M0）
+## Case 1：proxy donors 的假迁移告警（崩溃类，基础设施验证）
 
 | 项     | 内容                                                                                                |
 | ------ | --------------------------------------------------------------------------------------------------- |
@@ -59,7 +59,7 @@ QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译
 
 **验证参数**：WARN_ON_ONCE（每次 boot 至多一次）→ 每次 QEMU 运行即一次独立判定；编排正确则确定性出现 → 预期 R_base ≈ 1.0，M=3。
 
-**验证结果（M0，2026-10-22）**：基线 10/10 命中（R_base = 1.0）；补丁 3/3 判定成立——WARN 消失而代理迁移依然发生（诊断行 `waiter task_cpu=1` 佐证，排除“场景失效”假阴性）；阴性对照 3/3 命中；回归冒烟通过。结论分级：**VERIFIED-DETERMINISTIC**。
+**验证结果（基础设施验证，2026-10-22）**：基线 10/10 命中（R_base = 1.0）；补丁 3/3 判定成立——WARN 消失而代理迁移依然发生（诊断行 `waiter task_cpu=1` 佐证，排除“场景失效”假阴性）；阴性对照 3/3 命中；回归冒烟通过。结论分级：**VERIFIED-DETERMINISTIC**。
 
 **风险**：签名与机制已于 2026-10-22 对照 `/home/yaqia/linux` 的提交正文核实（`WARNING: kernel/sched/core.c:3389 at set_task_cpu+0x1d3/0x280`）；剩余风险仅模块内等待时序（owner 持锁时长 vs waiter 阻塞窗口），在基线实测校准。
 
@@ -67,14 +67,14 @@ QEMU: -smp 2；需 CONFIG_SCHED_PROXY_EXEC=y（与 CONFIG_SCHED_CLASS_EXT 编译
 
 ---
 
-## Case 2：LLC 错误调度（行为类，M0）
+## Case 2：LLC 错误调度（行为类，基础设施验证）
 
 | 项     | 内容                                                                                              |
 | ------ | ------------------------------------------------------------------------------------------------- |
 | commit | `0d6526f82c3c` sched/cache: Keep nr_pref_llc_running in the runnable domain                       |
 | 作者   | Tim Chen；Reported-by: Zhan Xusheng（小米）；Suggested-by: Chen Yu                                |
 | Fixes  | `714059f79ff0`（可 bisect 的真回归）；Cc stable v7.2.x，进 7.3-rc5                                |
-| 报告   | lore.kernel.org/lkml/20260827135000.735138-1-zhanxusheng@xiaomi.com/（含现场负载描述，M0 前必读） |
+| 报告   | lore.kernel.org/lkml/20260827135000.735138-1-zhanxusheng@xiaomi.com/（含现场负载描述） |
 | 类别   | 行为类 → `ftrace_assert` 型 checker                                                               |
 
 **机制**：`nr_pref_llc_running` 按 queued 语义计数，`h_nr_runnable` 按 runnable 语义计数。DELAY_DEQUEUE 让睡眠任务滞留在前者中，等式 `nr_pref_llc_running == cfs.h_nr_runnable` 失配 → `alb_break_llc()` 误判 → 主动负载均衡把任务拉离其偏好 LLC。
@@ -187,7 +187,7 @@ pattern 带函数名以过滤内核其他代码的 UBSAN 报告。
 
 **验证参数**：算术必然而非竞态 → R_base = 1.0 → M=3，加阴性对照 3 次；每次运行含 ~2.5h 浸润，单 case 全程约 4 × 2.6h ≈ 过夜作业——这正好验证作业队列的长时间运行与断点续跑（预算按小时计）。
 
-**沉淀的知识模板**（进 M3 知识库的第一条）：**行为诡异 + dump 干净 → 检查热路径的算术边界**（乘积溢出、移位、精度）。同类历史案例（vlag 上界裁剪、augmented tree 记账精度等）后续按此模板扩充。
+**沉淀的知识模板**（进 M4 知识库的第一条）：**行为诡异 + dump 干净 → 检查热路径的算术边界**（乘积溢出、移位、精度）。同类历史案例（vlag 上界裁剪、augmented tree 记账精度等）后续按此模板扩充。
 
 ---
 
